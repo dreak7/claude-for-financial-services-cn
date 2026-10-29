@@ -10,8 +10,10 @@ which is downstream of untrusted-document readers. An attacker who controls a
 processed document could embed a literal handoff_request blob that, if echoed,
 would be parsed here. This script mitigates by (a) hard-allowlisting
 target_agent against the deployed slugs and (b) schema-validating the payload
-before steering. In production, prefer emitting handoffs via a dedicated tool
-call or a typed SSE event the model cannot produce by quoting document text.
+before steering. Every candidate additionally requires an operator to type `yes`;
+non-interactive runs fail closed. In production, prefer emitting handoffs via a
+dedicated tool call or a typed SSE event the model cannot produce by quoting
+document text.
 """
 import json
 import os
@@ -36,28 +38,33 @@ HANDOFF_PAYLOAD_SCHEMA = {
     },
 }
 
-HANDOFF_RE = re.compile(
-    r'\{"type":\s*"handoff_request".*?\}', re.DOTALL
-)
+HANDOFF_RE = re.compile(r'\{\s*"type"\s*:\s*"handoff_request"')
 
 
 def extract_handoff(text: str) -> dict | None:
-    m = HANDOFF_RE.search(text)
-    if not m:
-        return None
+    for match in HANDOFF_RE.finditer(text):
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text[match.start():])
+        except json.JSONDecodeError:
+            continue
+        target = obj.get("target_agent")
+        payload = obj.get("payload")
+        if target not in ALLOWED_TARGETS:
+            continue
+        try:
+            jsonschema.validate(instance=payload, schema=HANDOFF_PAYLOAD_SCHEMA)
+        except jsonschema.ValidationError:
+            continue
+        return {"target_agent": target, "payload": payload}
+    return None
+
+
+def confirm_handoff(target_slug: str) -> bool:
     try:
-        obj = json.loads(m.group(0))
-    except json.JSONDecodeError:
-        return None
-    target = obj.get("target_agent")
-    payload = obj.get("payload")
-    if target not in ALLOWED_TARGETS:
-        return None
-    try:
-        jsonschema.validate(instance=payload, schema=HANDOFF_PAYLOAD_SCHEMA)
-    except jsonschema.ValidationError:
-        return None
-    return {"target_agent": target, "payload": payload}
+        answer = input(f"Authorize handoff to {target_slug}? Type 'yes' to continue: ")
+    except (EOFError, OSError):
+        return False
+    return answer.strip().lower() == "yes"
 
 
 def run(source_session_id: str, agent_ids: dict[str, str]) -> None:
@@ -73,7 +80,7 @@ def run(source_session_id: str, agent_ids: dict[str, str]) -> None:
                 continue
             target_slug = handoff["target_agent"]
             target_id = agent_ids.get(target_slug)
-            if not target_id:
+            if not target_id or not confirm_handoff(target_slug):
                 continue
             client.beta.agents.sessions.steer(  # type: ignore[attr-defined]
                 agent_id=target_id,

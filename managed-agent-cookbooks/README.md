@@ -31,4 +31,4 @@ The `agent.yaml` files use the real `POST /v1/agents` field names with a few con
 
 ## Cross-agent handoffs
 
-Named agents never call each other directly. When one agent needs another, it emits a `handoff_request` in its output; [`../scripts/orchestrate.py`](../scripts/orchestrate.py) (or your Temporal/Airflow/Guidewire event bus) routes it as a new steering event to the target session. The reference script hard-allowlists targets and schema-validates payloads — see its header comment for the threat model.
+Named agents never call each other directly. When one agent needs another, it emits a `handoff_request` in its output; [`../scripts/orchestrate.py`](../scripts/orchestrate.py) (or your Temporal/Airflow/Guidewire event bus) routes it as a new steering event to the target session. Because model output can contain instructions copied from untrusted documents, the reference script hard-allowlists targets, schema-validates payloads, and requires an operator to type `yes` before every handoff. Non-interactive runs do not steer automatically.
