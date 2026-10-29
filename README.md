@@ -224,6 +224,17 @@ claude plugin install fund-admin@claude-for-financial-services-cn
 
 </details>
 
+### SSE 远程访问安全
+
+四个 MCP 服务默认使用 stdio；SSE 模式默认仅监听 `127.0.0.1`。监听非本机地址时必须设置至少 32 个字符的 `MCP_AUTH_TOKEN`，否则服务拒绝启动。设置后，所有 SSE 请求均需携带 `Authorization: Bearer <MCP_AUTH_TOKEN>`。
+
+```bash
+export MCP_AUTH_TOKEN="replace-with-a-random-token-of-at-least-32-characters"
+python3 mcp-servers/ifind-mcp/server.py --transport sse --host 0.0.0.0 --port 8002
+```
+
+远程部署还必须使用 HTTPS 反向代理和防火墙限制来源；不要直接通过明文 HTTP 在不可信网络传输 Bearer Token。
+
 ### iFind 数据源（新增）
 
 iFind MCP 封装了同花顺 iFind 的远程 MCP 服务，提供 **31 个工具**，覆盖 **7 大服务域**：

@@ -12,7 +12,11 @@ import argparse
 import json
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sse_security import add_sse_arguments, run_sse
 
 import akshare as ak
 import pandas as pd
@@ -73,14 +77,12 @@ def get_market_headlines(top_n: int = 20) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="China News MCP Server")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default="stdio")
-    parser.add_argument("--port", type=int, default=8001)
-    parser.add_argument("--host", type=str, default="0.0.0.0")
+    add_sse_arguments(parser, 8001)
     args = parser.parse_args()
 
     if args.transport == "sse":
         print(f"Starting SSE server on http://{args.host}:{args.port}/mcp", file=sys.stderr)
-        server.run(transport="sse", host=args.host, port=args.port)
+        run_sse(server, args.host, args.port)
     else:
         print("Starting stdio MCP server...", file=sys.stderr)
         server.run(transport="stdio")

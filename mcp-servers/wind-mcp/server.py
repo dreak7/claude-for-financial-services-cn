@@ -31,6 +31,9 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sse_security import add_sse_arguments, run_sse
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
@@ -799,9 +802,7 @@ def wind_get_financial_data(question: str, lang: str = "CNS") -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Wind MCP Server v2.0")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default="stdio")
-    parser.add_argument("--port", type=int, default=8003)
-    parser.add_argument("--host", type=str, default="127.0.0.1")
+    add_sse_arguments(parser, 8003)
     args = parser.parse_args()
 
     if not API_KEY:
@@ -813,12 +814,8 @@ def main():
         )
 
     if args.transport == "sse":
-        if args.host in ("0.0.0.0", "::"):
-            print(f"WARNING: SSE server binding to {args.host} — accessible from ANY network. "
-                  "Use --host 127.0.0.1 for local-only access or put a reverse proxy in front.",
-                  file=sys.stderr)
         print(f"Starting Wind SSE server on http://{args.host}:{args.port}/mcp", file=sys.stderr)
-        server.run(transport="sse", host=args.host, port=args.port)
+        run_sse(server, args.host, args.port)
     else:
         print("Starting Wind stdio MCP server (v2.0)...", file=sys.stderr)
         server.run(transport="stdio")

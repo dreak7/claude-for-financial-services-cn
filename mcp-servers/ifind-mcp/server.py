@@ -21,6 +21,9 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sse_security import add_sse_arguments, run_sse
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
@@ -550,9 +553,7 @@ def ifind_sector_data(query: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="iFind MCP Server")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default="stdio")
-    parser.add_argument("--port", type=int, default=8002)
-    parser.add_argument("--host", type=str, default="0.0.0.0")
+    add_sse_arguments(parser, 8002)
     args = parser.parse_args()
 
     if not AUTH_TOKEN:
@@ -564,7 +565,7 @@ def main():
 
     if args.transport == "sse":
         print(f"Starting iFind SSE server on http://{args.host}:{args.port}/mcp", file=sys.stderr)
-        server.run(transport="sse", host=args.host, port=args.port)
+        run_sse(server, args.host, args.port)
     else:
         print("Starting iFind stdio MCP server...", file=sys.stderr)
         server.run(transport="stdio")
