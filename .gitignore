@@ -34,3 +34,6 @@ mcp-servers/*/mcp_config.json
 *.xlsx
 *.docx
 .claude/settings.local.json
+
+# Local agent handoff notes
+handoff.md
