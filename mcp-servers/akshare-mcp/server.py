@@ -21,6 +21,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sse_security import add_sse_arguments, run_sse
+from validation import is_stock_code
 
 import akshare as ak
 import pandas as pd
@@ -91,6 +92,8 @@ def get_quote(ticker: str) -> str:
     Returns price, change %, volume, turnover, PE, PB, market cap, and more.
     """
     try:
+        if not is_stock_code(ticker):
+            return json.dumps({"error": "ticker must be a 6-digit stock code"}, ensure_ascii=False)
         df = ak.stock_zh_a_spot_em()
         df = df[df["代码"] == ticker]
         if df.empty:
@@ -111,6 +114,8 @@ def get_historical_data(ticker: str, start_date: str = "", end_date: str = "", f
         frequency: "daily" (default), "weekly", "monthly".
     """
     try:
+        if not is_stock_code(ticker):
+            return json.dumps({"error": "ticker must be a 6-digit stock code"}, ensure_ascii=False)
         if frequency not in {"daily", "weekly", "monthly"}:
             return json.dumps({"error": "frequency must be daily, weekly, or monthly"}, ensure_ascii=False)
         if not end_date:
@@ -141,6 +146,8 @@ def get_financials(ticker: str, statement_type: str = "income", period: str = "a
         period: "annual" (按年度, last 5 years), "quarterly" (按单季度, last 8).
     """
     try:
+        if not is_stock_code(ticker):
+            return json.dumps({"error": "ticker must be a 6-digit stock code"}, ensure_ascii=False)
         if period not in {"annual", "quarterly"}:
             return json.dumps({"error": "period must be annual or quarterly"}, ensure_ascii=False)
         # THS abstract's `indicator` selects the period granularity, not the
@@ -184,6 +191,8 @@ def get_index_data(index_code: str = "000001") -> str:
                     Common: 000001(上证), 399001(深证), 399006(创业板), 000688(科创50).
     """
     try:
+        if not is_stock_code(index_code):
+            return json.dumps({"error": "index_code must be a 6-digit code"}, ensure_ascii=False)
         mapping = {
             "000001": "sh000001",
             "399001": "sz399001",
@@ -206,6 +215,8 @@ def get_stock_info(ticker: str) -> str:
     Returns: industry, market cap, listing date, business scope, etc.
     """
     try:
+        if not is_stock_code(ticker):
+            return json.dumps({"error": "ticker must be a 6-digit stock code"}, ensure_ascii=False)
         info = ak.stock_individual_info_em(symbol=ticker)
         return _df_to_json(info)
     except Exception as e:
@@ -242,6 +253,8 @@ def get_fund_data(fund_code: str) -> str:
         fund_code: Fund code (e.g., "000001" for Huitianfu).
     """
     try:
+        if not is_stock_code(fund_code):
+            return json.dumps({"error": "fund_code must be a 6-digit code"}, ensure_ascii=False)
         df = ak.fund_etf_spot_em()
         result = df[df["代码"] == fund_code]
         if result.empty:

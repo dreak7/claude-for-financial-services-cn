@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sse_security import add_sse_arguments, run_sse
+from validation import is_date
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -173,6 +174,16 @@ def _call_ifind(server_type: str, tool_name: str, arguments: dict) -> str:
         )
     if server_type not in SERVER_URLS:
         return json.dumps({"error": f"未知服务类型: {server_type}"}, ensure_ascii=False)
+    if "size" in arguments and not 1 <= arguments["size"] <= 50:
+        return json.dumps({"error": "size 必须在 1 到 50 之间"}, ensure_ascii=False)
+    if "market" in arguments and arguments["market"] not in {"港股", "美股"}:
+        return json.dumps({"error": "market 仅支持港股或美股"}, ensure_ascii=False)
+    for key in ("time_start", "time_end"):
+        if arguments.get(key) and not is_date(arguments[key], "%Y-%m-%d"):
+            return json.dumps({"error": f"{key} 必须为 YYYY-MM-DD 格式"}, ensure_ascii=False)
+    if (arguments.get("time_start") and arguments.get("time_end")
+            and arguments["time_start"] > arguments["time_end"]):
+        return json.dumps({"error": "time_start 不能晚于 time_end"}, ensure_ascii=False)
 
     payload = {
         "jsonrpc": "2.0",

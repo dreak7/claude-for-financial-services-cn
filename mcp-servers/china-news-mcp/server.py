@@ -17,6 +17,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sse_security import add_sse_arguments, run_sse
+from validation import is_stock_code
 
 import akshare as ak
 import pandas as pd
@@ -60,6 +61,8 @@ def get_stock_news(ticker: str) -> str:
         ticker: Stock code (e.g., "600519" for Maotai).
     """
     try:
+        if not is_stock_code(ticker):
+            return json.dumps({"error": "ticker must be a 6-digit stock code"}, ensure_ascii=False)
         df = ak.stock_news_em(symbol=ticker)
         return _df_to_json(df)
     except Exception as e:

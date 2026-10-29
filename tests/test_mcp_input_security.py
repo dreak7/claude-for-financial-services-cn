@@ -44,6 +44,8 @@ def load(name, relative):
 akshare_server = load("akshare_server_input_test", "mcp-servers/akshare-mcp/server.py")
 news_server = load("news_server_input_test", "mcp-servers/china-news-mcp/server.py")
 ifind = load("ifind_server_input_test", "mcp-servers/ifind-mcp/server.py")
+wind = load("wind_server_input_test", "mcp-servers/wind-mcp/server.py")
+validators = load("validation_test", "mcp-servers/validation.py")
 
 
 class InputValidationTest(unittest.TestCase):
@@ -71,6 +73,74 @@ class InputValidationTest(unittest.TestCase):
         with patch.object(news_server.ak, "stock_info_global_em", return_value=df):
             result = json.loads(news_server.get_market_headlines(-1))
         self.assertEqual(result, [])
+
+    def test_invalid_stock_code_does_not_call_upstream(self):
+        with patch.object(akshare_server.ak, "stock_zh_a_spot_em") as call:
+            result = json.loads(akshare_server.get_quote("600519.SH"))
+        self.assertIn("error", result)
+        call.assert_not_called()
+
+    def test_news_rejects_invalid_stock_code(self):
+        with patch.object(news_server.ak, "stock_news_em", create=True) as call:
+            result = json.loads(news_server.get_stock_news("not-a-stock"))
+        self.assertIn("error", result)
+        call.assert_not_called()
+
+    def test_ifind_rejects_invalid_size_and_date_range(self):
+        response = Mock()
+        with (
+            patch.object(ifind, "AUTH_TOKEN", "token"),
+            patch.object(ifind, "_init_session"),
+            patch.object(ifind, "_post", return_value=(response, {})) as post,
+        ):
+            bad_size = json.loads(ifind.ifind_search_news("test", size=0))
+            bad_dates = json.loads(ifind.ifind_search_news(
+                "test", time_start="2026-02-01", time_end="2026-01-01"
+            ))
+        self.assertIn("error", bad_size)
+        self.assertIn("error", bad_dates)
+        post.assert_not_called()
+
+    def test_wind_rejects_invalid_windcode_date_and_top_k(self):
+        with (
+            patch.object(wind, "API_KEY", "token"),
+            patch.object(wind, "_mcp_call") as call,
+        ):
+            bad_code = json.loads(wind.wind_get_stock_quote("not a code"))
+            bad_date = json.loads(wind.wind_get_stock_kline(
+                "600519.SH", "20260230", "20260301"
+            ))
+            bad_top_k = json.loads(wind.wind_get_financial_news("test", top_k=-1))
+            bad_aftime = json.loads(wind.wind_get_stock_kline(
+                "600519.SH", "20260101", "20260102", aftime="2"
+            ))
+        self.assertIn("error", bad_code)
+        self.assertIn("error", bad_date)
+        self.assertIn("error", bad_top_k)
+        self.assertIn("error", bad_aftime)
+        call.assert_not_called()
+
+    def test_wind_allows_contract_names_and_periods(self):
+        with (
+            patch.object(wind, "API_KEY", "token"),
+            patch.object(wind, "_mcp_call", return_value={}) as call,
+        ):
+            by_name = json.loads(wind.wind_get_stock_quote("贵州茅台"))
+            minute_kline = json.loads(wind.wind_get_stock_kline(
+                "600519.SH", "20260101", "20260102", period="1"
+            ))
+        self.assertEqual(by_name, {})
+        self.assertEqual(minute_kline, {})
+        self.assertEqual(call.call_count, 4)  # initialize + tool call, twice
+
+    def test_validation_requires_ascii_codes_and_exact_date_width(self):
+        self.assertFalse(validators.is_stock_code("６００５１９"))
+        self.assertFalse(validators.is_date("2026-1-01", "%Y-%m-%d"))
+        self.assertFalse(validators.is_date("2026-01-1", "%Y-%m-%d"))
+        self.assertFalse(validators.is_date("202611", "%Y%m%d"))
+        self.assertFalse(validators.is_date("2026011", "%Y%m%d"))
+        self.assertTrue(validators.is_date("2026-01-01", "%Y-%m-%d"))
+        self.assertTrue(validators.is_date("20260101", "%Y%m%d"))
 
     def test_upstream_exception_is_not_returned_to_caller(self):
         with patch.object(akshare_server.ak, "stock_zh_a_spot_em", side_effect=Exception("secret-token")):

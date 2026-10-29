@@ -33,6 +33,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sse_security import add_sse_arguments, run_sse
+from validation import is_date, is_windcode
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -199,6 +200,20 @@ def _call_wind(server_type: str, tool_name: str, arguments: dict) -> str:
         )
     if server_type not in SERVER_URLS:
         return json.dumps({"error": f"未知服务类型: {server_type}"}, ensure_ascii=False)
+    if "windcode" in arguments and not is_windcode(arguments["windcode"]):
+        return json.dumps({"error": "invalid windcode"}, ensure_ascii=False)
+    for key in ("begin_date", "end_date", "beginDate", "endDate"):
+        if arguments.get(key) and not is_date(arguments[key], "%Y%m%d"):
+            return json.dumps({"error": f"{key} must be a valid yyyyMMdd date"}, ensure_ascii=False)
+    for begin, end in (("begin_date", "end_date"), ("beginDate", "endDate")):
+        if arguments.get(begin) and arguments.get(end) and arguments[begin] > arguments[end]:
+            return json.dumps({"error": f"{begin} must not be after {end}"}, ensure_ascii=False)
+    if "top_k" in arguments and not 1 <= arguments["top_k"] <= 100:
+        return json.dumps({"error": "top_k must be between 1 and 100"}, ensure_ascii=False)
+    if "period" in arguments and arguments["period"] not in {"1", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"}:
+        return json.dumps({"error": "period is not supported by the Wind contract"}, ensure_ascii=False)
+    if "aftime" in arguments and arguments["aftime"] not in {"0", "1"}:
+        return json.dumps({"error": "aftime must be 0 or 1"}, ensure_ascii=False)
 
     try:
         # Initialize session (stateless — validates key, returns capabilities)
@@ -269,7 +284,7 @@ def wind_get_stock_kline(
         begin_date: 起始日期，如 "20260401"
         end_date: 结束日期，如 "20260430"
         period: K 线周期（"10"=日K, "11"=周K, "12"=月K），默认 "10"
-        aftime: 复权方式（"0"=前复权, "1"=后复权, "2"=不复权），默认 "0"
+        aftime: 复权方式（"0"=前复权, "1"=后复权），默认 "0"
         count: 返回条数（可选，与日期范围二选一）
     """
     args = {"windcode": windcode, "begin_date": begin_date, "end_date": end_date, "period": period, "aftime": aftime}
