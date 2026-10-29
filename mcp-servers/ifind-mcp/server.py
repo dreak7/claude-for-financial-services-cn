@@ -59,8 +59,7 @@ BASE_URL = "https://api-mcp.51ifind.com:8643/ds-mcp-servers"
 class CompatibleSSLAdapter(HTTPAdapter):
     def init_poolmanager(self, *args, **kwargs):
         ctx = create_urllib3_context()
-        ctx.check_hostname = False
-        # Allow older TLS versions for compatibility
+        # Require TLS 1.2+ while retaining certificate and hostname verification.
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         kwargs["ssl_context"] = ctx
         return super().init_poolmanager(*args, **kwargs)
@@ -114,7 +113,7 @@ def _post(server_type: str, payload: dict, timeout: int = 60) -> tuple:
             SERVER_URLS[server_type],
             json=payload,
             headers=_headers(server_type),
-            verify=False,
+            verify=True,
             timeout=timeout,
         )
         data = None
@@ -152,7 +151,7 @@ def _init_session(server_type: str) -> None:
         SERVER_URLS[server_type],
         json=notify,
         headers=_headers(server_type),
-        verify=False,
+        verify=True,
         timeout=10,
     )
 
