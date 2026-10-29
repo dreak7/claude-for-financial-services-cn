@@ -47,6 +47,11 @@ def _df_to_json(df: pd.DataFrame) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def _error(tool: str, error: Exception) -> str:
+    print(f"{tool} failed: {error}", file=sys.stderr)
+    return json.dumps({"error": f"{tool} failed"}, ensure_ascii=False)
+
+
 @server.tool()
 def get_stock_news(ticker: str) -> str:
     """Get latest news for a specific A-share stock.
@@ -58,7 +63,7 @@ def get_stock_news(ticker: str) -> str:
         df = ak.stock_news_em(symbol=ticker)
         return _df_to_json(df)
     except Exception as e:
-        return json.dumps({"error": f"get_stock_news failed: {e}"}, ensure_ascii=False)
+        return _error("get_stock_news", e)
 
 
 @server.tool()
@@ -70,9 +75,9 @@ def get_market_headlines(top_n: int = 20) -> str:
     """
     try:
         df = ak.stock_info_global_em()
-        return _df_to_json(df.head(min(top_n, 50)))
+        return _df_to_json(df.head(max(0, min(top_n, 50))))
     except Exception as e:
-        return json.dumps({"error": f"get_market_headlines failed: {e}"}, ensure_ascii=False)
+        return _error("get_market_headlines", e)
 
 
 def main():

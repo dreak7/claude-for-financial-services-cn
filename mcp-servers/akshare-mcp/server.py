@@ -15,7 +15,7 @@ Usage:
 import argparse
 import json
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +45,11 @@ def _df_to_json(df: pd.DataFrame) -> str:
     return json.dumps(df.to_dict(orient="records"), ensure_ascii=False, default=str)
 
 
+def _error(tool: str, error: Exception) -> str:
+    print(f"{tool} failed: {error}", file=sys.stderr)
+    return json.dumps({"error": f"{tool} failed"}, ensure_ascii=False)
+
+
 def _clean_code(code: str) -> str:
     """Normalize stock code (strip exchange prefix if present)."""
     return code.strip().upper().replace("SH", "").replace("SZ", "").replace("BJ", "").replace(".", "")
@@ -72,11 +77,11 @@ def search_stock(keyword: str) -> str:
     """
     try:
         df = ak.stock_info_a_code_name()
-        mask = df["code"].astype(str).str.contains(keyword, case=False) | df["name"].str.contains(keyword, case=False)
+        mask = df["code"].astype(str).str.contains(keyword, case=False, regex=False) | df["name"].str.contains(keyword, case=False, regex=False)
         result = df[mask].head(20)
         return _df_to_json(result)
     except Exception as e:
-        return json.dumps({"error": f"search_stock failed: {e}"}, ensure_ascii=False)
+        return _error("search_stock", e)
 
 
 @server.tool()
@@ -92,7 +97,7 @@ def get_quote(ticker: str) -> str:
             return json.dumps({"error": f"ticker {ticker} not found"}, ensure_ascii=False)
         return _df_to_json(df)
     except Exception as e:
-        return json.dumps({"error": f"get_quote failed: {e}"}, ensure_ascii=False)
+        return _error("get_quote", e)
 
 
 @server.tool()
@@ -106,15 +111,20 @@ def get_historical_data(ticker: str, start_date: str = "", end_date: str = "", f
         frequency: "daily" (default), "weekly", "monthly".
     """
     try:
+        if frequency not in {"daily", "weekly", "monthly"}:
+            return json.dumps({"error": "frequency must be daily, weekly, or monthly"}, ensure_ascii=False)
         if not end_date:
             end_date = date.today().strftime("%Y%m%d")
         if not start_date:
-            start = date.today().replace(year=date.today().year - 1)
-            start_date = start.strftime("%Y%m%d")
+            start_date = (date.today() - timedelta(days=365)).strftime("%Y%m%d")
+        start = datetime.strptime(start_date, "%Y%m%d").date()
+        end = datetime.strptime(end_date, "%Y%m%d").date()
+        if start > end:
+            return json.dumps({"error": "start_date must not be after end_date"}, ensure_ascii=False)
         df = ak.stock_zh_a_hist(symbol=ticker, period=frequency, start_date=start_date, end_date=end_date, adjust="qfq")
         return _df_to_json(df)
     except Exception as e:
-        return json.dumps({"error": f"get_historical_data failed: {e}"}, ensure_ascii=False)
+        return _error("get_historical_data", e)
 
 
 @server.tool()
@@ -131,6 +141,8 @@ def get_financials(ticker: str, statement_type: str = "income", period: str = "a
         period: "annual" (按年度, last 5 years), "quarterly" (按单季度, last 8).
     """
     try:
+        if period not in {"annual", "quarterly"}:
+            return json.dumps({"error": "period must be annual or quarterly"}, ensure_ascii=False)
         # THS abstract's `indicator` selects the period granularity, not the
         # statement type; the returned table mixes key income/balance/cashflow
         # items, so `statement_type` is accepted for compatibility but unused.
@@ -142,7 +154,7 @@ def get_financials(ticker: str, statement_type: str = "income", period: str = "a
             return _df_to_json(result)
         return json.dumps({"error": "no financial data returned"}, ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"error": f"get_financials failed: {e}"}, ensure_ascii=False)
+        return _error("get_financials", e)
 
 
 @server.tool()
@@ -160,7 +172,7 @@ def get_industry_stocks(industry: str = "") -> str:
         cons = ak.stock_board_industry_cons_em(symbol=industry)
         return _df_to_json(cons)
     except Exception as e:
-        return json.dumps({"error": f"get_industry_stocks failed: {e}"}, ensure_ascii=False)
+        return _error("get_industry_stocks", e)
 
 
 @server.tool()
@@ -184,7 +196,7 @@ def get_index_data(index_code: str = "000001") -> str:
         df = ak.stock_zh_index_daily(symbol=symbol)
         return _df_to_json(df.tail(500))
     except Exception as e:
-        return json.dumps({"error": f"get_index_data failed: {e}"}, ensure_ascii=False)
+        return _error("get_index_data", e)
 
 
 @server.tool()
@@ -197,7 +209,7 @@ def get_stock_info(ticker: str) -> str:
         info = ak.stock_individual_info_em(symbol=ticker)
         return _df_to_json(info)
     except Exception as e:
-        return json.dumps({"error": f"get_stock_info failed: {e}"}, ensure_ascii=False)
+        return _error("get_stock_info", e)
 
 
 @server.tool()
@@ -219,7 +231,7 @@ def get_market_overview() -> str:
             "most_active": [{k: str(v) for k, v in r.items()} for r in most_active],
         }, ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"error": f"get_market_overview failed: {e}"}, ensure_ascii=False)
+        return _error("get_market_overview", e)
 
 
 @server.tool()
@@ -236,7 +248,7 @@ def get_fund_data(fund_code: str) -> str:
             return json.dumps({"error": f"fund {fund_code} not found"}, ensure_ascii=False)
         return _df_to_json(result)
     except Exception as e:
-        return json.dumps({"error": f"get_fund_data failed: {e}"}, ensure_ascii=False)
+        return _error("get_fund_data", e)
 
 
 # ---------------------------------------------------------------------------

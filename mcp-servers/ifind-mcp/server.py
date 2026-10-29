@@ -87,6 +87,7 @@ SERVER_URLS = {
 _sessions: dict[str, str] = {}
 _req_ids: dict[str, int] = {}
 _lock = threading.Lock()
+_session_lock = threading.Lock()
 
 # 并发控制：免费版 2，个人版 5，企业版 10
 CONCURRENCY_LIMIT = int(os.environ.get("IFIND_CONCURRENCY", "2"))
@@ -94,8 +95,9 @@ _semaphore = threading.Semaphore(CONCURRENCY_LIMIT)
 
 
 def _next_id(server_type: str) -> int:
-    _req_ids[server_type] = _req_ids.get(server_type, 0) + 1
-    return _req_ids[server_type]
+    with _lock:
+        _req_ids[server_type] = _req_ids.get(server_type, 0) + 1
+        return _req_ids[server_type]
 
 
 def _headers(server_type: Optional[str] = None) -> dict:
@@ -133,30 +135,33 @@ def _post(server_type: str, payload: dict, timeout: int = 60) -> tuple:
 def _init_session(server_type: str) -> None:
     if server_type in _sessions:
         return
-    payload = {
-        "jsonrpc": "2.0",
-        "id": _next_id(server_type),
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2025-03-26",
-            "capabilities": {},
-            "clientInfo": {"name": "ifind-mcp-proxy", "version": "1.1.0"},
-        },
-    }
-    resp, data = _post(server_type, payload, timeout=30)
-    resp.raise_for_status()
-    session_id = resp.headers.get("Mcp-Session-Id")
-    if not session_id:
-        raise RuntimeError(f"iFind initialize 未返回 Mcp-Session-Id: {data}")
-    _sessions[server_type] = session_id
-    notify = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    _session.post(
-        SERVER_URLS[server_type],
-        json=notify,
-        headers=_headers(server_type),
-        verify=True,
-        timeout=10,
-    )
+    with _session_lock:
+        if server_type in _sessions:
+            return
+        payload = {
+            "jsonrpc": "2.0",
+            "id": _next_id(server_type),
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "ifind-mcp-proxy", "version": "1.1.0"},
+            },
+        }
+        resp, data = _post(server_type, payload, timeout=30)
+        resp.raise_for_status()
+        session_id = resp.headers.get("Mcp-Session-Id")
+        if not session_id:
+            raise RuntimeError("iFind initialize 未返回 Mcp-Session-Id")
+        notify = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+        _session.post(
+            SERVER_URLS[server_type],
+            json=notify,
+            headers={**_headers(), "Mcp-Session-Id": session_id},
+            verify=True,
+            timeout=10,
+        ).raise_for_status()
+        _sessions[server_type] = session_id
 
 
 def _call_ifind(server_type: str, tool_name: str, arguments: dict) -> str:
@@ -169,7 +174,6 @@ def _call_ifind(server_type: str, tool_name: str, arguments: dict) -> str:
     if server_type not in SERVER_URLS:
         return json.dumps({"error": f"未知服务类型: {server_type}"}, ensure_ascii=False)
 
-    _init_session(server_type)
     payload = {
         "jsonrpc": "2.0",
         "id": _next_id(server_type),
@@ -177,13 +181,15 @@ def _call_ifind(server_type: str, tool_name: str, arguments: dict) -> str:
         "params": {"name": tool_name, "arguments": arguments},
     }
     try:
+        _init_session(server_type)
         resp, data = _post(server_type, payload)
         if isinstance(data, dict) and "error" in data:
             return json.dumps({"error": data["error"]}, ensure_ascii=False)
         resp.raise_for_status()
         return json.dumps(data, ensure_ascii=False, default=str)
     except Exception as e:
-        return json.dumps({"error": f"iFind 请求失败: {e}"}, ensure_ascii=False)
+        print(f"iFind {server_type}/{tool_name} failed: {e}", file=sys.stderr)
+        return json.dumps({"error": "iFind 请求失败，请检查网络或稍后重试"}, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
