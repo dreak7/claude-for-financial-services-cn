@@ -253,7 +253,7 @@ iFind MCP 封装了同花顺 iFind 的远程 MCP 服务，提供 **31 个工具*
 
 ```bash
 cd mcp-servers/ifind-mcp
-pip install -r ../../requirements.txt
+pip install "mcp<2" uvicorn requests
 ```
 
 #### 配置密钥
@@ -363,7 +363,7 @@ export WIND_API_KEY="ak_your-key-here"
 
 ```bash
 cd mcp-servers/wind-mcp
-pip install -r ../../requirements.txt
+pip install "mcp<2" uvicorn requests
 ```
 
 #### 启动服务
@@ -438,13 +438,7 @@ bash scripts/test-china-cookbooks.sh
 
 # 安全回归测试
 python3 -m unittest discover -s tests -v
-
-# 依赖漏洞与新增密钥扫描
-pip-audit -r requirements.txt
-detect-secrets-hook --baseline .secrets.baseline $(git ls-files)
 ```
-
-直接依赖见 `requirements.in`；`requirements.txt` 是由 `uv pip compile requirements.in --generate-hashes --universal --output-file requirements.txt` 生成的完整锁定文件。GitHub Actions 会对推送和 PR 自动执行测试与扫描。
 
 ---
 

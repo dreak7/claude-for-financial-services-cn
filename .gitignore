@@ -37,3 +37,9 @@ mcp-servers/*/mcp_config.json
 
 # Local agent handoff notes
 handoff.md
+
+# Local security-audit artifacts (not part of the upstream project)
+requirements.in
+requirements.txt
+.secrets.baseline
+.github/workflows/security.yml
